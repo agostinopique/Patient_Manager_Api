@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "NMbeCPcn3a84CqEuLo8TfSQBoHFOAcLTmgpNcEFjO2w=",
+  "Source": "PatientManagerApi",
+  "BasePath": "_content/PatientManagerApi",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
