@@ -102,12 +102,10 @@ graph TD
 
 Code example: 
 
-	// Auth Service (central)
+
 	app.post('/login', (req, res) => {
-	  	// Validate credentials
 	  	const token = jwt.sign({ userId }, SHARED_SECRET, { expiresIn: '1h' });
 	  
-	  	// Set cross-domain cookie
 	  	res.cookie('sso_token', token, {
 	    		domain: '.yourdomain.com',
 	    		httpOnly: true,
@@ -118,14 +116,11 @@ Code example:
 	  	res.json({ token });
 	});
 
-	// Client Applications (all N apps)
 	const verifySSO = async () => {
 	  	try {
-	    		// 1. Check local token first
 	    		const localToken = localStorage.getItem('token');
 	    		if (localToken && jwt.verify(localToken, SHARED_SECRET)) return true;
 	    
-	    		// 2. Check for SSO cookie
 	    		const { data } = await axios.get('https://auth.yourdomain.com/verify', {
 	     		 withCredentials: true
 	   	 });
