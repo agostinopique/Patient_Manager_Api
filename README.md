@@ -10,9 +10,17 @@ I chose to go with a hybrid of the two to keep maximum reliability since the fir
 
 
 Diagram:
-[Tab 1] --> BroadcastChannel --> [Tab 2]
-   ↑                               ↑
-LocalStorage Event ←------→ LocalStorage Event
+
+sequenceDiagram
+  participant Tab1
+  participant LocalStorage
+  participant BroadcastChannel
+  participant Tab2
+
+  Tab1->>LocalStorage: Set selectedPatientId=123
+  LocalStorage->>Tab2: StorageEvent (sync)
+  Tab1->>BroadcastChannel: Post message
+  BroadcastChannel->>Tab2: Receive message
 
 
 
@@ -23,37 +31,37 @@ In a new SyncContext.tsx:
 	import { useState, useEffect } from 'react';
 
 	const useCrossTabSync = () => {
-  	const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
-  
- 	 useEffect(() => {
-    const channel = new BroadcastChannel('patient_view_channel');
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'selectedPatient') {
-        setSelectedPatientId(JSON.parse(e.newValue || 'null'));
-      }
-    };
+	  	const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
+	  
+	 	useEffect(() => {
+		    const channel = new BroadcastChannel('patient_view_channel');
+		    const handleStorageChange = (e: StorageEvent) => {
+		      if (e.key === 'selectedPatient') {
+		        setSelectedPatientId(JSON.parse(e.newValue || 'null'));
+		      }
+		};
+	
+		    channel.addEventListener('message', (e) => {
+		      setSelectedPatientId(e.data.patientId);
+		    });
+		
+		    window.addEventListener('storage', handleStorageChange);
+		
+		    return () => {
+		      channel.close();
+		      window.removeEventListener('storage', handleStorageChange);
+		    };
+	 	 }, []);
+	
+	  	const syncPatientView = (patientId: number | null) => {
+		    localStorage.setItem('selectedPatient', JSON.stringify(patientId));
+		    new BroadcastChannel('patient_view_channel').postMessage({
+		      type: 'PATIENT_VIEW',
+		      patientId
+	    		});
+	  	};
 
-    channel.addEventListener('message', (e) => {
-      setSelectedPatientId(e.data.patientId);
-    });
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      channel.close();
-      window.removeEventListener('storage', handleStorageChange);
-    };
- 	 }, []);
-
-  	const syncPatientView = (patientId: number | null) => {
-    localStorage.setItem('selectedPatient', JSON.stringify(patientId));
-    new BroadcastChannel('patient_view_channel').postMessage({
-      type: 'PATIENT_VIEW',
-      patientId
-    });
-  	};
-
- 	 return { selectedPatientId, syncPatientView };
+ 	 	return { selectedPatientId, syncPatientView };
 	};
 
 In my HomePageComponent:
@@ -69,6 +77,65 @@ In my HomePageComponent:
 
 
 PROBLEM 2:
-Problem 2: 
-(Not strictly related to the above application)
-Scenario: we have N web applications that can be installed on different servers. Once the user is logged into one of these applications, the other applications must recognize user login so that he won't need to insert credentials again.
+For this problem I thought about how to manage and implement a JWT-based SSO with a shared auth service.
+
+All applications must trust the same auth mechanism and all user sessions must have a single source of truth.
+
+To implement this I had to implement both a shared JWT secret and OAuth2, to have both a shared secter via JWT and a central session store via Redis.
+I added an Auth Service to have a centralized login endpoint (JWT Issuer), I setup a cross-domain cookie by setting up a domain cookie readable by all subdomains and setup a Token verification system.
+
+The token verification system checks the local JWT Token. If the token is expired or missing, it silently verify via the auth service and Redis tracks the active session for revocation.
+
+This approach requires the use of HTTPS for cookies and tokens, to securely exchange secrets.
+
+
+Diagram:
+
+graph TD
+  A[User Logs In] --> B[Auth Service]
+  B --> C[Set .domain.com Cookie]
+  C --> D[App1: Read Cookie/JWT]
+  C --> E[App2: Read Cookie/JWT]
+  C --> F[AppN: Read Cookie/JWT]
+  D --> G[Access Granted]
+
+
+Code example: 
+
+	// Auth Service (central)
+	app.post('/login', (req, res) => {
+	  	// Validate credentials
+	  	const token = jwt.sign({ userId }, SHARED_SECRET, { expiresIn: '1h' });
+	  
+	  	// Set cross-domain cookie
+	  	res.cookie('sso_token', token, {
+	    		domain: '.yourdomain.com',
+	    		httpOnly: true,
+	    		secure: true,
+	    		sameSite: 'lax'
+	  	});
+	  
+	  	res.json({ token });
+	});
+
+	// Client Applications (all N apps)
+	const verifySSO = async () => {
+	  	try {
+	    		// 1. Check local token first
+	    		const localToken = localStorage.getItem('token');
+	    		if (localToken && jwt.verify(localToken, SHARED_SECRET)) return true;
+	    
+	    		// 2. Check for SSO cookie
+	    		const { data } = await axios.get('https://auth.yourdomain.com/verify', {
+	     		 withCredentials: true
+	   	 });
+	    
+	    	if (data.valid) {
+	     		 localStorage.setItem('token', data.token);
+	      		return true;
+	    	}
+	    		return false;
+	  	} catch {
+	    	return false;
+	  	}
+	};
