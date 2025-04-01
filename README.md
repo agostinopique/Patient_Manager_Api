@@ -104,6 +104,7 @@ Code example:
 
 
 	app.post('/login', (req, res) => {
+ 		// Validate credentials and set cross-domain cookie
 	  	const token = jwt.sign({ userId }, SHARED_SECRET, { expiresIn: '1h' });
 	  
 	  	res.cookie('sso_token', token, {
@@ -116,12 +117,15 @@ Code example:
 	  	res.json({ token });
 	});
 
+	// for all N apps
 	const verifySSO = async () => {
 	  	try {
+    			// 1. Check local token first
 	    		const localToken = localStorage.getItem('token');
 	    		if (localToken && jwt.verify(localToken, SHARED_SECRET)) return true;
-	    
-	    		const { data } = await axios.get('https://auth.yourdomain.com/verify', {
+
+     			 // 2. Check for SSO cookie
+	    		const { data } = await axios.get('https://domain.com/verify', {
 	     		 withCredentials: true
 	   	 });
 	    
